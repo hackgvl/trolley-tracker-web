@@ -1,3 +1,4 @@
+'use strict';
 var tracker = {
   baseUrl: "http://yeahthattrolley.azurewebsites.net/api/v1/",
   tileLayer: {
@@ -17,7 +18,7 @@ var tracker = {
     var self = this;
     this.initMap();
 
-    //load data from the various necessary endpoints, then update.
+    //load data for the schedule, the trolleys, and the active routes
     jQuery.when(
       jQuery.getJSON(this.baseUrl + "/RouteSchedules", function(routeSchedules) {
         self.schedules = routeSchedules;
@@ -29,21 +30,23 @@ var tracker = {
 
       jQuery.getJSON(this.baseUrl + "/Routes/Active", function(activeRoutes) {
         self.activeRoutes = activeRoutes;
-      }).then(self.fetchRouteData(self))
+      })
 
-    ).done(function() {      
-      self.update();
+    ).done(function() {
+      //fetch the individual route data for the currently active routes, then update the map
+      var routeCalls = jQuery.map(self.activeRoutes, function(activeRoute) {
+        return jQuery.getJSON(self.baseUrl + "/Routes/" + activeRoute.ID, function(route) {
+          self.routes.push(route);
+        });
+      });
+
+      jQuery.when.apply(jQuery, routeCalls).done(function() {
+        self.loadSchedule();
+        self.loadRoutes();
+        self.loadStops();
+        self.update();
+      });
     });
-  },
-
-  fetchRouteData: function(self) {
-    var routeCalls = [];
-    for(var i = 0; i < self.activeRoutes.length; i++) {
-      routeCalls.push(jQuery.getJSON(self.baseUrl + "/Routes/" + self.activeRoutes[i].ID, function(route) {
-        self.routes.push(route);
-      }));
-    }
-    return routeCalls;
   },
 
   initMap: function() {
@@ -75,57 +78,70 @@ var tracker = {
     this.map.addControl(new control);
   },
 
-  initRoutes: function() {
-    /*
-    var pointList = [];
-    data.forEach(function(loc, index, array){
-      pointList.push(new L.LatLng(loc.Lat, loc.Lon));
-    });
-
-    var routePolyLine = new L.Polyline(pointList, {
-      color: color.color,
-      weight: 3,
-      opacity: 0.5,
-      smoothFactor: 1
-    });
-
-    //use the settext plugin to add directional arrows to the route.
-    routePolyLine.setText('  ►  ', {repeat: true, attributes: {fill: color.color}});
-
-    //store the new polyline in the routes object
-    routes.push(routePolyLine);
-
-    routePolyLine.addTo(this.map);
-    */
+  loadSchedule: function() {
+    jQuery('#schedule').html("Sorry - Not yet available!");
   },
 
-  initStops: function() {
-    /*
-    stoplocs.forEach(function(loc, index, array) {
-    var stopMarker = L.divIcon({className: "trolley-stop-icon " + color.css});
-    
-    var oMapMarker = L.marker([loc.Lat, loc.Lon], {
-      icon: stopMarker
-    });
+  loadRoutes: function() {
+    var self = this;
 
-    oMapMarker.Name = loc.Name;
-    oMapMarker.StopImageURL = loc.StopImageURL;
+    for (var i = 0; i < self.routes.length; i++) {
+      var route = self.routes[i];
 
-    bStopExists = false;
-
-    stops.forEach(function(existloc, existindex, existarray) {
-      if (existloc._latlng.lat == loc.Lat && existloc._latlng.lng == loc.Lon) {
-        //then this stop is on two routes.  relying on setting the color name as the LAST class argument.  (first is trolley-stop-icon)
-        //this will build color strings of all colors to show (red-green-blue if it's on three routes initialized in that order)
-        existloc.options.icon.options.className = existloc.options.icon.options.className + "-" + color.css;
+      var routePoints = [];
+      for (var j = 0; j < route.RouteShape.length; j++) {
+        var point = route.RouteShape[j];
+        routePoints.push(new L.LatLng(point.Lat, point.Lon));
       }
-    });
 
-    stops.push(oMapMarker);
-    */
+      var routePolyline = new L.Polyline(routePoints, {
+        weight: 3,
+        opacity: 0.5,
+        smoothFactor: 1
+      });
+
+      routePolyline.setText('  ►  ', {repeat: true});
+      self.routePolylines.push({
+        "ID": route.ID,
+        "polyline": routePolyline
+      });
+      routePolyline.addTo(self.map);
+    }
+  },
+  
+  loadStops: function() {
+    var self = this;
+
+    for (var i = 0; i < self.routes.length; i++) {
+      var route = self.routes[i];
+
+      for (var j = 0; j < route.Stops.length; j++) {
+        var stop = route.Stops[j];
+
+        var builtStopIds = jQuery.map(self.stopMapMarkers, function(stopMapMarker){
+          return stopMapMarker.ID;
+        });
+
+        if (builtStopIds.indexOf(stop.ID) == -1) {
+          var stopMapMarker = L.marker([stop.Lat, stop.Lon], { 
+            icon: L.divIcon({
+              className: "trolley-stop-icon"
+            })
+          });
+
+          stopMapMarker.addTo(self.map).bindPopup("<p><b>" + stop.Name + "</b></p>");
+
+          self.stopMapMarkers.push({
+            ID: stop.ID,
+            Name: stop.Name,
+            mapMarker: stopMapMarker
+          });
+        }
+      }
+    }
   },
 
-  //fetch current trolley data from the server, update tracker state, call update map
+  //fetch current trolley data from the server, update trolley locations
   update: function() {
     var self = window.tracker;
 
@@ -152,17 +168,11 @@ var tracker = {
         trolleyToUpdate.CurrentLon = runningTrolleyData[i].Lon;
       }
 
-      self.updateMap();
+      self.updateTrolleyMarkers();
       if (self.display == "tracker") {
         setTimeout(self.update, self.updateInterval);
       }
     });
-  },
-
-  updateMap: function() {
-    this.updateTrolleyMarkers();
-    this.updateMapRoutes()
-    this.updateStopMarkers();
   },
 
   updateTrolleyMarkers: function() {
@@ -201,19 +211,24 @@ var tracker = {
     }
   },
 
-  updateMapRoutes: function() {
-    
-  },
-
-  updateStopMarkers: function() {
-    /*
-    stops.forEach(function(loc, index, array) {
-      loc.addTo(oMap).bindPopup("<p><b>" + loc.Name + "</b>" + sImageHTML + "</p>");
-    });
-    */
-  },
-
   trolleyMapMarkers: [],
+  /* [{
+    "ID":5,
+    "mapMarker": {L.marker}
+  }] */
+
+  stopMapMarkers: [],
+  /* [{
+    "ID":31,
+    "Name":"Fluor Field",
+    "mapMarker": {L.marker}
+  }] */
+
+  routePolylines: [],
+  /* [{
+    "ID":5,
+    "polyline": {L.Polyline}
+  }] */
 
   activeRoutes: [],
   /* [{
@@ -252,21 +267,25 @@ var tracker = {
           "5":"2017-06-25T16:39:32.4026481",
           "6":"2017-06-25T16:55:55.3628703"
         }
-      } 
-    }] */
+    }],
+    "RouteShape":[{
+      "Lat":34.8413537,
+      "Lon":-82.4047159
+    }]
+  }] */
 
-    trolleys: [],
-    /* {
-      "ID":1,
-      "TrolleyName":"Trolley",
-      "Number":6,
-      "CurrentLat":34.855824,
-      "CurrentLon":-82.394571,
-      "LastBeaconTime":"2017-06-25T17:18:51.64",
-      "IconColorRGB":"#353a72"
-    }] */
+  trolleys: [],
+  /* [{
+    "ID":1,
+    "TrolleyName":"Trolley",
+    "Number":6,
+    "CurrentLat":34.855824,
+    "CurrentLon":-82.394571,
+    "LastBeaconTime":"2017-06-25T17:18:51.64",
+    "IconColorRGB":"#353a72"
+  }] */
 
-    activeTrolleyIds: [] //integers
+  activeTrolleyIds: [] //integers
 };
 
 /*

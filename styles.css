@@ -13,34 +13,7 @@ html, body, #map {
     border-radius: 50%;
     width: 20px;
     height: 20px;
-}
-
-.trolley-stop-icon.first {
-    background: #7659D1;
-}
-
-.trolley-stop-icon.second {
-    background-color: #9AB87A;
-}
-
-.trolley-stop-icon.third {
-    background-color: #FEDF66;
-}
-
-.trolley-stop-icon.first-second {
-    background-color: linear-gradient(to right, #7659D1 50%, #9AB87A 50%);
-}
-
-.trolley-stop-icon.first-second-third {
-    background: linear-gradient(to right, #7659D1 33%, #9AB87A 33%, #9AB87A 66%, #FEDF66 66%)
-}
-
-.trolley-stop-icon.second-third {
-    background-color: linear-gradient(to right, #9AB87A 50%, #FEDF66 50%);
-}
-
-.trolley-stop-icon.first-third {
-    background-color: linear-gradient(to right, #7659D1 50%, #FEDF66 50%);
+    background: black;
 }
 
 .leaflet-control-attribution {
